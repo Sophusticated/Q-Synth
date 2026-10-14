@@ -21,14 +21,17 @@ from qsynth.CliffordSynthesis.circuit_utils import (
 )
 from qsynth.CnotPlusT.generate_pddl_specification import (
     generate_problem_specification,
+    get_goal_matrix_and_phase_polynomial_from_cnot_rz_circuit,
 )
 from qsynth.CnotPlusT.options import Options as op
 from qsynth.Utilities.result import MappingResult
 
 
 # solve using a planner:
-def solve_cnot_synth(matrix, options, num_qubits):
-    pddl_lines = generate_problem_specification(matrix, options, num_qubits)
+def solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits):
+    pddl_lines = generate_problem_specification(
+        goal_matrix, phase_polynomial, options, num_qubits
+    )
     print(pddl_lines)
     # writing pddl to file:
     print(options.pddl_problem_out)
@@ -42,7 +45,7 @@ def solve_cnot_synth(matrix, options, num_qubits):
 
 
 # Solve cnot_synth problem with a planner, and print the result
-def cnot_synth_main(matrix, options, num_qubits):
+def cnot_synth_main(goal_matrix, phase_polynomial, options, num_qubits):
     start_time = time.perf_counter()
     if options.verbose > 1:
         print(f"\nUsing {options.encoding} encoding,", end=" ")
@@ -50,7 +53,7 @@ def cnot_synth_main(matrix, options, num_qubits):
         print(f"\nUsing Planner {options.planner}")
     if options.verbose > 1 and options.coupling_graph:
         print(f"Mapping to Coupling graph:\n {options.coupling_graph}\n")
-    plan = solve_cnot_synth(matrix, options, num_qubits)
+    plan = solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits)
     if plan == None:
         # empty:
         return None, None, None
@@ -155,11 +158,15 @@ def cnot_optimization(
     options = set_options(
         encoding, planner, time, minimization, verbose, coupling_graph
     )
-    # we give the complete clifford matrix, we only next destabilizer X matrix for cnot synthesis:
-    matrix = Clifford(circuit)
+    #We track the linear matrix and the phase polynomial separately (instead of Clifford as seen in CNOT):
+    goal_matrix, phase_polynomial = get_goal_matrix_and_phase_polynomial_from_cnot_rz_circuit(
+        circuit
+    )
     num_qubits = len(circuit.qubits)
 
-    _, opt_circuit, qubit_map = cnot_synth_main(matrix, options, num_qubits)
+    _, opt_circuit, qubit_map = cnot_synth_main(
+        goal_matrix, phase_polynomial, options, num_qubits
+    )
 
     if opt_circuit is None:
         return MappingResult(circuit=circuit, no_plan_found=True)

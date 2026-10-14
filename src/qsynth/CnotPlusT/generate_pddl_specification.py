@@ -22,22 +22,59 @@ def goal_x_and_z(matrix, matrix_predicate, pddl_lines, index_increment, num_qubi
                     + f" q{index_increment+row_id} q{column_id}))"
                 )
         pddl_lines.append(f" {row_line}\n")
-    # Here I should actually print the parities as well
     return pddl_lines
 
 
-def generate_problem_specification(clifford_matrix, options, num_qubits):
+def goal_parities(phase_polynomial, num_qubits):
+    """
+    goal for the phase polynomial.
+
+    Each distinct parity that accumulated a nonzero phase becomes a
+    parity object. eg. (in pN qI) marks which qubits are in that parity, and (done pN) is
+    the corresponding goal. 
+    The T action checks at search time whether a qubit's current column matches a parity's target,
+    so this function only needs to emit the static 'in' facts.
+
+    Returns:
+        parity_names: PDDL object names, one per distinct rotation
+        init_lines: '(in pN qI)' facts for :init
+        goal_lines: '(done pN)' literals for :goal
+    """
+    parity_names = []
+    init_lines = []
+    goal_lines = []
+    init_lines.append("\n;; Static Parities:\n")
+    for idx, (parity_vector, theta) in enumerate(phase_polynomial.items()):
+        p_name = f"p{idx}"
+        parity_names.append(p_name)
+        init_lines.append(f"; {p_name}: theta={theta}\n")
+        for qubit_id in range(num_qubits):
+            if parity_vector[qubit_id]:
+                init_lines.append(f"(in {p_name} q{qubit_id})\n")
+        goal_lines.append(f"(done {p_name})")
+    return parity_names, init_lines, goal_lines
+
+
+def generate_problem_specification(goal_matrix, phase_polynomial, options, num_qubits):
     pddl_lines = []
     pddl_lines.append("(define (problem instance)\n")
-    pddl_lines.append("  (:domain Cnot-Synthesis)\n")
-    pddl_lines.append("  (:objects")
-    # generating objects for rows/columns:
+    pddl_lines.append("  (:domain CnotplusT-Synthesis)\n")
+
+    parity_names, parity_init_lines, parity_goal_lines = goal_parities(
+        phase_polynomial, num_qubits
+    )
+
+    # generating objects for rows/columns and for parities:
     qubits = ""
     for i in range(num_qubits):
         qubits += f"q{i} "
-    pddl_lines.append(f"  {qubits}- qubit)\n")
+    parity_decl = ""
+    if parity_names:
+        parity_decl = " " + "".join(f"{p} " for p in parity_names) + "- parity"
+    pddl_lines.append(f"  (:objects  {qubits}- qubit{parity_decl})\n")
 
     pddl_lines.append("(:init\n")
+    pddl_lines.append("  (= (total-cost) 0)\n")
     # identity matrix:
     cells = "\n;; Identity matrix\n"
     for i in range(num_qubits):
@@ -48,15 +85,24 @@ def generate_problem_specification(clifford_matrix, options, num_qubits):
     if options.coupling_graph:
         for edge in options.coupling_graph:
             pddl_lines.append(f"  (connected q{edge[0]} q{edge[1]})\n")
+
+    pddl_lines = pddl_lines + parity_init_lines
     pddl_lines.append(")\n")
 
     pddl_lines.append("(:goal\n")
 
-    # Destabilizer goal matrices:
+    # Destabilizer goal matrix:
     pddl_lines.append("  (and\n   ;; target destabilizer X matrix\n")
-    pddl_lines = goal_x_and_z(clifford_matrix.destab_x, "X", pddl_lines, 0, num_qubits)
-    pddl_lines.append("  )\n)\n)")
-    #Or maybe I should put it here
+    pddl_lines = goal_x_and_z(goal_matrix, "X", pddl_lines, 0, num_qubits)
+
+    # Rotations (T/Tdg) that must have been applied:
+    pddl_lines.append("   ;; rotations applied\n")
+    for goal_line in parity_goal_lines:
+        pddl_lines.append(f"  {goal_line}\n")
+
+    pddl_lines.append("  )\n)\n")
+    pddl_lines.append("(:metric minimize (total-cost))\n")
+    pddl_lines.append(")")
     return pddl_lines
 
 
@@ -88,7 +134,7 @@ def get_goal_matrix_and_phase_polynomial_from_cnot_rz_circuit(circuit):
     """
     Returns:
         goal_matrix as a numpy array
-        phase_polynomial as a dictionary from state vectors (tuples of ints) to phases (modulo 2π)
+        phase_polynomial as a dictionary from parity vectors (boolean vectors represented by numpy ints) to phases (modulo 2π)
     """
     circuit = get_circuit_converted_to_cnot_T(circuit)
     goal_matrix = np.eye(circuit.num_qubits, dtype=int)
@@ -104,9 +150,9 @@ def get_goal_matrix_and_phase_polynomial_from_cnot_rz_circuit(circuit):
         elif instr.name == "rz":
             theta = instr.params[0]
             q = circuit.find_bit(instr.qubits[0]).index
-            state_vector = tuple(goal_matrix[:, q])
-            old_coeff = phase_polynomial.get(state_vector, 0)
-            phase_polynomial[state_vector] = old_coeff + theta
+            parity_vector = tuple(goal_matrix[:, q])
+            old_coeff = phase_polynomial.get(parity_vector, 0)
+            phase_polynomial[parity_vector] = old_coeff + theta
         else:
             raise ValueError(f"Unsupported gate: {instr.name}")
 
