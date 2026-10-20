@@ -199,43 +199,12 @@ def cnot_optimization_from_file(
     )
 
 '''
-Questions:
+Notes:
+I have no T dagger action and no sign on the rotation
+I am not actually converting back into a circuit yet 
+since I have the clifford one
 
+Therefore I haven't run end to end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-- Preprocessing is reusable as-is — 
-call the same get_goal_matrix_and_phase_polynomial_from_cnot_rz_circuit 
-logic to get (goal_matrix, phase_polynomial) before generating any PDDL.
-- New fluent: (applied ?rot) per phase-rotation object.
-- New action per rotation, generated the same way generate_pddl_specification.py's
- goal_x_and_z already emits one grounded literal per matrix cell for the goal
-   — do the same for each rotation's target parity: a grounded apply-rotation-r
-     action per (r, qubit) pair, precondition = the literal conjunction of 
-     (X qi q)/(not (X qi q)) matching that parity's bits, effect = (applied r). 
-     It touches no X fluent, matching that Rz doesn't change the linear map.
-- Goal = today's goal_x_and_z cell literals for the final matrix, and-ed with
- (applied r) for every rotation.
-- Cost/metric: only cnot actions should count toward cx-count/cx-depth 
-apply-rotation actions are free, so whatever cost annotation the planner 
-uses needs to zero them out.
-- One simplification you get for free: since the dict merge already happened in preprocessing,
- distinct rotation objects never share an identical target parity 
- — you won't need to handle "two rotations racing for the same wire."
-
-write the preprocessing helper, extend Domains/lifted.pddl with the rotation action/fluent,
- and adapt generate_pddl_specification.py to emit the per-rotation
-   grounded actions — so you have a first runnable version to iterate on?
+Also, 
 '''
