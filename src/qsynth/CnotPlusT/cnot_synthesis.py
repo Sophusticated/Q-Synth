@@ -27,6 +27,21 @@ from qsynth.CnotPlusT.options import Options as op
 from qsynth.Utilities.result import MappingResult
 
 
+# Turns a plan into a circuit. Local to CnotPlusT since lifted.pddl's action set is not clifford
+def extract_circuit(plan, t, options, num_qubits):
+    opt_circuit = QuantumCircuit(num_qubits)
+    for k in range(1, t + 1):
+        cur_action = plan[k - 1]
+        qubit1 = int(cur_action[1][1:])
+        if cur_action[0] == "cnot":
+            qubit2 = int(cur_action[2][1:])
+            opt_circuit.cx(qubit1, qubit2)
+        elif cur_action[0] == "t":
+            opt_circuit.t(qubit1)
+        else:
+            raise ValueError(f"Unsupported action in plan: {cur_action[0]}")
+    return opt_circuit, {}
+
 # solve using a planner:
 def solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits):
     pddl_lines = generate_problem_specification(
@@ -204,7 +219,11 @@ I have no T dagger action and no sign on the rotation
 I am not actually converting back into a circuit yet 
 since I have the clifford one
 
-Therefore I haven't run end to end
+There might not be any need to give to the planner the actual 
+amount of T gates on any given parity. 
+But when reconstructing we have to check.
 
-Also, 
+Check performance when varying cost on T gate
+
+CS gate
 '''
