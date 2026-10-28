@@ -39,20 +39,23 @@ def goal_parities(phase_polynomial, num_qubits):
         parity_names: PDDL object names, one per distinct rotation
         init_lines: '(in pN qI)' facts for :init
         goal_lines: '(done pN)' literals for :goal
+        parity_thetas: from parity name to its accumulated phase, for decoding
     """
     parity_names = []
     init_lines = []
     goal_lines = []
+    parity_thetas = {}
     init_lines.append("\n;; Static Parities:\n")
     for idx, (parity_vector, theta) in enumerate(phase_polynomial.items()):
         p_name = f"p{idx}"
         parity_names.append(p_name)
+        parity_thetas[p_name] = theta
         init_lines.append(f"; {p_name}: theta={theta}\n")
         for qubit_id in range(num_qubits):
             if parity_vector[qubit_id]:
                 init_lines.append(f"(in {p_name} q{qubit_id})\n")
         goal_lines.append(f"(done {p_name})")
-    return parity_names, init_lines, goal_lines
+    return parity_names, init_lines, goal_lines, parity_thetas
 
 
 def generate_problem_specification(goal_matrix, phase_polynomial, options, num_qubits):
@@ -60,7 +63,7 @@ def generate_problem_specification(goal_matrix, phase_polynomial, options, num_q
     pddl_lines.append("(define (problem instance)\n")
     pddl_lines.append("  (:domain CnotplusT-Synthesis)\n")
 
-    parity_names, parity_init_lines, parity_goal_lines = goal_parities(
+    parity_names, parity_init_lines, parity_goal_lines, parity_thetas = goal_parities(
         phase_polynomial, num_qubits
     )
 
@@ -103,7 +106,7 @@ def generate_problem_specification(goal_matrix, phase_polynomial, options, num_q
     pddl_lines.append("  )\n)\n")
     pddl_lines.append("(:metric minimize (total-cost))\n")
     pddl_lines.append(")")
-    return pddl_lines
+    return pddl_lines, parity_thetas
 
 
 

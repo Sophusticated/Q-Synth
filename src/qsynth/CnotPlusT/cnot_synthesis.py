@@ -7,6 +7,7 @@
 # - goal: transform stabilizer X matric to goal matrix by CNOT operations
 # - output: minimal number of gates (other metrics are a todo)
 
+import math
 import os
 import time
 import qsynth.CnotPlusT.cnot_synthesis as cs
@@ -27,24 +28,29 @@ from qsynth.CnotPlusT.options import Options as op
 from qsynth.Utilities.result import MappingResult
 
 
-# Turns a plan into a circuit. Local to CnotPlusT since lifted.pddl's action set is not clifford
-def extract_circuit(plan, t, options, num_qubits):
+# Turns a plan into a circuit. Local to CnotPlusT since lifted.pddl's action set is not clifford.
+# A "t p_name" action means parity p_name's phase has been resolved on this qubit.
+def extract_circuit(plan, t, options, num_qubits, parity_thetas):
     opt_circuit = QuantumCircuit(num_qubits)
-    for k in range(1, t + 1):
-        cur_action = plan[k - 1]
+    for k in range(0, t):
+        cur_action = plan[k]
         qubit1 = int(cur_action[1][1:])
         if cur_action[0] == "cnot":
             qubit2 = int(cur_action[2][1:])
             opt_circuit.cx(qubit1, qubit2)
         elif cur_action[0] == "t":
-            opt_circuit.t(qubit1)
+            p_name = cur_action[2]
+            theta = parity_thetas[p_name]
+            num_t_gates = round(theta / (math.pi / 4)) % 8
+            for _ in range(num_t_gates):
+                opt_circuit.t(qubit1)
         else:
             raise ValueError(f"Unsupported action in plan: {cur_action[0]}")
     return opt_circuit, {}
 
 # solve using a planner:
 def solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits):
-    pddl_lines = generate_problem_specification(
+    pddl_lines, parity_thetas = generate_problem_specification(
         goal_matrix, phase_polynomial, options, num_qubits
     )
     print(pddl_lines)
@@ -56,7 +62,7 @@ def solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits):
     f.close()
     run_instance = rp(options)
     # returning empty plan:
-    return run_instance.plan
+    return run_instance.plan, parity_thetas
 
 
 # Solve cnot_synth problem with a planner, and print the result
@@ -68,12 +74,12 @@ def cnot_synth_main(goal_matrix, phase_polynomial, options, num_qubits):
         print(f"\nUsing Planner {options.planner}")
     if options.verbose > 1 and options.coupling_graph:
         print(f"Mapping to Coupling graph:\n {options.coupling_graph}\n")
-    plan = solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits)
+    plan, parity_thetas = solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits)
     if plan == None:
         # empty:
         return None, None, None
     plan_length = len(plan)
-    opt_circuit, qubit_map = extract_circuit(plan, plan_length, options, num_qubits)
+    opt_circuit, qubit_map = extract_circuit(plan, plan_length, options, num_qubits, parity_thetas)
     # print(f"\nSolved in {plan_length} steps")
     total_time = time.perf_counter() - start_time
     if options.verbose > 1:
@@ -179,7 +185,7 @@ def cnot_optimization(
     )
     num_qubits = len(circuit.qubits)
 
-    _, opt_circuit, qubit_map = cnot_synth_main(
+    _, opt_circuit, _ = cnot_synth_main(
         goal_matrix, phase_polynomial, options, num_qubits
     )
 
@@ -215,15 +221,15 @@ def cnot_optimization_from_file(
 
 '''
 Notes:
-I have no T dagger action and no sign on the rotation
-I am not actually converting back into a circuit yet 
-since I have the clifford one
+I now store the phase so I can apply the right number of T gates
+I do not do T dagger gates, even though it could easily be implemented
 
-There might not be any need to give to the planner the actual 
-amount of T gates on any given parity. 
-But when reconstructing we have to check.
+I checked performance when putting a cost on T gates.
+around 0.3 for 0 cost
+around 0.7 for 1 cost
+around 2.2 for 2 cost
+around 4.5 for 3 cost 
+(lmao)
 
-Check performance when varying cost on T gate
 
-CS gate
 '''
