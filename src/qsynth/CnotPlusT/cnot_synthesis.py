@@ -28,6 +28,19 @@ from qsynth.CnotPlusT.options import Options as op
 from qsynth.Utilities.result import MappingResult
 
 
+# Applies a phase of k*(pi/4) on qubit q, using the fewest gates: Z/S cover the
+# even part of k for free (Clifford), and at most one T covers the odd part.
+# We never emit Tdg, by choice: an odd k always becomes one T, never one Tdg.
+def add_phase(circ, q, k):
+    k %= 8
+    if k & 4:
+        circ.z(q)
+    if k & 2:
+        circ.s(q)
+    if k & 1:
+        circ.t(q)
+
+
 # Turns a plan into a circuit. Local to CnotPlusT since lifted.pddl's action set is not clifford.
 # A "t p_name" action means parity p_name's phase has been resolved on this qubit.
 def extract_circuit(plan, t, options, num_qubits, parity_thetas):
@@ -41,9 +54,8 @@ def extract_circuit(plan, t, options, num_qubits, parity_thetas):
         elif cur_action[0] == "t":
             p_name = cur_action[2]
             theta = parity_thetas[p_name]
-            num_t_gates = round(theta / (math.pi / 4)) % 8
-            for _ in range(num_t_gates):
-                opt_circuit.t(qubit1)
+            phase_k = round(theta / (math.pi / 4))
+            add_phase(opt_circuit, qubit1, phase_k)
         else:
             raise ValueError(f"Unsupported action in plan: {cur_action[0]}")
     return opt_circuit, {}
@@ -230,6 +242,17 @@ around 0.7 for 1 cost
 around 2.2 for 2 cost
 around 4.5 for 3 cost 
 (lmao)
+
+
+If we wantto be able to replace Rz gates by  Cz gates or Cs gates
+then we need to think about the cost, and in fnoisy QC, the T gates are modelled as free
+but in fault tolerant computing the T gates are the expensive ones.
+So how should I model cost?
+Can I do an example Cs gate replacement
+I need to store more information than just the parities
+also the parities that are a + b could also be just 1 qubit actually.
+
+
 
 
 '''

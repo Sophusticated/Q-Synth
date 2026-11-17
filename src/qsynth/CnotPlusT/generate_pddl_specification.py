@@ -78,6 +78,7 @@ def generate_problem_specification(goal_matrix, phase_polynomial, options, num_q
 
     pddl_lines.append("(:init\n")
     pddl_lines.append("  (= (total-cost) 0)\n")
+    pddl_lines.append("  (= (cnot-cost) 1)\n")
     # identity matrix:
     cells = "\n;; Identity matrix\n"
     for i in range(num_qubits):

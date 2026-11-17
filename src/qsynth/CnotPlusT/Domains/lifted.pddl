@@ -2,7 +2,7 @@
 (define (domain CnotplusT-Synthesis)
 (:requirements :adl :action-costs)
 ; https://planning.wiki/ref/pddl/requirements#adl
-(:functions (total-cost) - number)
+(:functions (total-cost) - number (cnot-cost) - number)
 (:types qubit parity - object)
 
 (:predicates
@@ -19,7 +19,7 @@
 :effect       (and 
                 (forall(?r - qubit) (when (and (X ?r ?c)      (X ?r ?t)) (not (X ?r ?t))))
                 (forall(?r - qubit) (when (and (X ?r ?c) (not (X ?r ?t)))     (X ?r ?t)))
-                (increase (total-cost) 1)
+                (increase (total-cost) (cnot-cost))
               )
 )
 

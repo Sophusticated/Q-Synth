@@ -3,6 +3,7 @@
   (:objects  q0 q1 q2 q3 - qubit p0 p1 - parity)
 (:init
   (= (total-cost) 0)
+  (= (cnot-cost) 1)
 ;; Identity matrix
 (X q0 q0)
 (X q1 q1)
