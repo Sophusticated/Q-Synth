@@ -17,6 +17,10 @@
 
 (in p1 q3)
 
+;; T cost - k mod 2:
+(= (tcost p0) 1)
+(= (tcost p1) 1)
+
 ;; No need to mention that the done predicate is false since it defaults to that
 ;; Goal is just identity matrix
 )

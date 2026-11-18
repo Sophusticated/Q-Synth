@@ -7,7 +7,6 @@
 # - goal: transform stabilizer X matric to goal matrix by CNOT operations
 # - output: minimal number of gates (other metrics are a todo)
 
-import math
 import os
 import time
 import qsynth.CnotPlusT.cnot_synthesis as cs
@@ -43,7 +42,8 @@ def add_phase(circ, q, k):
 
 # Turns a plan into a circuit. Local to CnotPlusT since lifted.pddl's action set is not clifford.
 # A "t p_name" action means parity p_name's phase has been resolved on this qubit.
-def extract_circuit(plan, t, options, num_qubits, parity_thetas):
+# A "cs/csdg/cz qa qb a b c" action means a,b,c  are all resolved
+def extract_circuit(plan, t, options, num_qubits, parity_ks):
     opt_circuit = QuantumCircuit(num_qubits)
     for k in range(0, t):
         cur_action = plan[k]
@@ -53,16 +53,26 @@ def extract_circuit(plan, t, options, num_qubits, parity_thetas):
             opt_circuit.cx(qubit1, qubit2)
         elif cur_action[0] == "t":
             p_name = cur_action[2]
-            theta = parity_thetas[p_name]
-            phase_k = round(theta / (math.pi / 4))
-            add_phase(opt_circuit, qubit1, phase_k)
+            add_phase(opt_circuit, qubit1, parity_ks[p_name])
+        elif cur_action[0] in ("cs", "csdg", "cz"):
+            qubit2 = int(cur_action[2][1:])
+            a_name, b_name, c_name = cur_action[3], cur_action[4], cur_action[5]
+            k_a, k_b, k_c = parity_ks[a_name], parity_ks[b_name], parity_ks[c_name]
+            add_phase(opt_circuit, qubit1, k_a + k_c)
+            add_phase(opt_circuit, qubit2, k_b + k_c)
+            if cur_action[0] == "cs":
+                opt_circuit.cs(qubit1, qubit2)
+            elif cur_action[0] == "csdg":
+                opt_circuit.csdg(qubit1, qubit2)
+            else:
+                opt_circuit.cz(qubit1, qubit2)
         else:
             raise ValueError(f"Unsupported action in plan: {cur_action[0]}")
     return opt_circuit, {}
 
 # solve using a planner:
 def solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits):
-    pddl_lines, parity_thetas = generate_problem_specification(
+    pddl_lines, parity_ks = generate_problem_specification(
         goal_matrix, phase_polynomial, options, num_qubits
     )
     print(pddl_lines)
@@ -74,7 +84,7 @@ def solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits):
     f.close()
     run_instance = rp(options)
     # returning empty plan:
-    return run_instance.plan, parity_thetas
+    return run_instance.plan, parity_ks
 
 
 # Solve cnot_synth problem with a planner, and print the result
@@ -86,12 +96,12 @@ def cnot_synth_main(goal_matrix, phase_polynomial, options, num_qubits):
         print(f"\nUsing Planner {options.planner}")
     if options.verbose > 1 and options.coupling_graph:
         print(f"Mapping to Coupling graph:\n {options.coupling_graph}\n")
-    plan, parity_thetas = solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits)
+    plan, parity_ks = solve_cnot_synth(goal_matrix, phase_polynomial, options, num_qubits)
     if plan == None:
         # empty:
         return None, None, None
     plan_length = len(plan)
-    opt_circuit, qubit_map = extract_circuit(plan, plan_length, options, num_qubits, parity_thetas)
+    opt_circuit, qubit_map = extract_circuit(plan, plan_length, options, num_qubits, parity_ks)
     # print(f"\nSolved in {plan_length} steps")
     total_time = time.perf_counter() - start_time
     if options.verbose > 1:
@@ -99,7 +109,18 @@ def cnot_synth_main(goal_matrix, phase_polynomial, options, num_qubits):
     return plan_length, opt_circuit, qubit_map
 
 
-def set_options(encoding, planner, time, minimization, verbose, coupling_graph):
+def set_options(
+    encoding,
+    planner,
+    time,
+    minimization,
+    verbose,
+    coupling_graph,
+    cnot_cost=1,
+    cs_cost=2,
+    csdg_cost=2,
+    cz_cost=0,
+):
     options = op()
     options.verbose = verbose
     options.encoding = encoding
@@ -108,6 +129,10 @@ def set_options(encoding, planner, time, minimization, verbose, coupling_graph):
     options.coupling_graph = coupling_graph
     options.minimization = minimization
     options.qubit_permute = False
+    options.cnot_cost = cnot_cost
+    options.cs_cost = cs_cost
+    options.csdg_cost = csdg_cost
+    options.cz_cost = cz_cost
 
     # find Benchmarks and Domains,
     source_location = os.path.dirname(cs.__file__)
@@ -187,9 +212,14 @@ def cnot_optimization(
     minimization="cnot",
     verbose=None,
     coupling_graph=None,
+    cnot_cost=1,
+    cs_cost=2,
+    csdg_cost=2,
+    cz_cost=0,
 ):
     options = set_options(
-        encoding, planner, time, minimization, verbose, coupling_graph
+        encoding, planner, time, minimization, verbose, coupling_graph,
+        cnot_cost, cs_cost, csdg_cost, cz_cost,
     )
     #We track the linear matrix and the phase polynomial separately (instead of Clifford as seen in CNOT):
     goal_matrix, phase_polynomial = get_goal_matrix_and_phase_polynomial_from_cnot_rz_circuit(
@@ -222,13 +252,18 @@ def cnot_optimization_from_file(
     minimization="cnot",
     verbose=None,
     coupling_graph=None,
+    cnot_cost=1,
+    cs_cost=2,
+    csdg_cost=2,
+    cz_cost=0,
 ):
     circuit = QuantumCircuit.from_qasm_file(circuit_in)
     if not coupling_graph_check(circuit, coupling_graph):
         print("Circuit CNOT gates don't satisfy the coupling graph restrictions")
         exit(-1)
     return cnot_optimization(
-        circuit, encoding, planner, time, minimization, verbose, coupling_graph
+        circuit, encoding, planner, time, minimization, verbose, coupling_graph,
+        cnot_cost, cs_cost, csdg_cost, cz_cost,
     )
 
 '''
