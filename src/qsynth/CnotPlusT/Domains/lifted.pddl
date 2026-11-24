@@ -21,8 +21,7 @@
   (cz-triangle ?a ?b ?c - parity)
   (on-wire ?p - parity ?q - qubit)) ; true iff wire q currently equals parity p exactly
 
-; a wire q currently equals a parity p iff they're composed of exactly the
-; same set of original qubits (in both directions)
+; biimplication of all qubits (i). If they are in the parity then they are on that wire and vice versa
 (:derived (on-wire ?p - parity ?q - qubit)
   (forall (?i - qubit)
     (and (imply (in ?i ?p) (X ?i ?q))
