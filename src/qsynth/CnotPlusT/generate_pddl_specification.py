@@ -35,14 +35,14 @@ def goal_parities(phase_polynomial, num_qubits):
     goal for the phase polynomial.
 
     Each distinct parity that accumulated a nonzero phase becomes a
-    parity object. eg. (in pN qI) marks which qubits are in that parity, and (done pN) is
+    parity object. eg. (in qI pN) marks which qubits are in that parity, and (done pN) is
     the corresponding goal.
     The T action checks at search time whether a qubit's current column matches a parity's target,
     so this function only needs to emit the static 'in' facts.
 
     Returns:
         parity_names: PDDL object names, one per distinct rotation
-        init_lines: '(in pN qI)' facts for :init
+        init_lines: '(in qI pN)' facts for :init
         goal_lines: '(done pN)' literals for :goal
         parity_thetas: from parity name to its accumulated phase, for the
             human-readable comment in :init
@@ -63,7 +63,7 @@ def goal_parities(phase_polynomial, num_qubits):
         init_lines.append(f"; {p_name}: theta={theta}\n")
         for qubit_id in range(num_qubits):
             if parity_vector[qubit_id]:
-                init_lines.append(f"(in {p_name} q{qubit_id})\n")
+                init_lines.append(f"(in q{qubit_id} {p_name})\n")
         goal_lines.append(f"(done {p_name})")
     return parity_names, init_lines, goal_lines, parity_thetas, parity_ks
 
